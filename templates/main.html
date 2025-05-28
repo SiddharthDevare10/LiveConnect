@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Main Page</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="../static/css/style.css" />
+</head>
+<body>
+
+    <div class="flex items-center min-h-screen p-6 bg-gray-50 dark:bg-gray-900">
+        <div class="flex-1 h-full max-w-4xl mx-auto overflow-hidden bg-white rounded-lg shadow-xl dark:bg-gray-800">
+            <div class="flex items-center justify-center p-6 sm:p-12 md:w-1/2">              
+                <div class="w-full">
+                    <h1 class="mb-4 text-xl font-bold text-gray-500 dark:text-gray-400">Welcome, {{ session['username'] }}!</h1>
+                    <h1 class="mb-4 text-xl font-semibold text-gray-700 dark:text-gray-200">
+                        Create a Room
+                    </h1>
+                    <form id="create-room-form" action="{{ url_for('create_room') }}" method="POST">
+                        <label class="block text-sm">
+                            <span class="text-gray-700 dark:text-gray-400">Room ID</span>
+                            <input type="text" name="room_id" placeholder="Enter Room ID" required
+                                class="block w-full mt-1 text-sm dark:border-gray-600 dark:bg-gray-700 focus:border-purple-400 focus:outline-none focus:shadow-outline-purple dark:text-gray-300 dark:focus:shadow-outline-gray form-input"
+                            />
+                        </label>
+                        <label class="block mt-4 text-sm">
+                            <span class="text-gray-700 dark:text-gray-400">Room PIN</span>
+                            <input type="password" name="pin" placeholder="Enter Room PIN" required
+                                class="block w-full mt-1 text-sm dark:border-gray-600 dark:bg-gray-700 focus:border-purple-400 focus:outline-none focus:shadow-outline-purple dark:text-gray-300 dark:focus:shadow-outline-gray form-input"
+                            />
+                        </label>
+        
+                        <button type="submit"
+                            class="block w-full px-4 py-2 mt-4 text-sm font-medium leading-5 text-center text-white transition-colors duration-150 bg-purple-600 border border-transparent rounded-lg active:bg-purple-600 hover:bg-purple-700 focus:outline-none focus:shadow-outline-purple"
+                        >
+                            Create Room
+                        </button>
+                    </form> 
+                    
+                    <br/>
+                    <br/>
+
+                    <h1 class="mb-4 text-xl font-semibold text-gray-700 dark:text-gray-200">
+                        Join a Room
+                    </h1>
+
+                    <label class="block text-sm">   
+                        <ul>
+                            {% for room in rooms %}
+                            <li>
+                                Room ID: {{ room.room_id }} 
+                                <button class="block w-full px-4 py-2 mt-4 text-sm font-medium leading-5 text-center text-white transition-colors duration-150 bg-purple-600 border border-transparent rounded-lg active:bg-purple-600 hover:bg-purple-700 focus:outline-none focus:shadow-outline-purple" onclick="joinRoom('{{ room.room_id }}')">Join</button>
+                            </li>
+                            {% else %}
+                            <li>No rooms available.</li>
+                            {% endfor %}
+                        </ul>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function joinRoom(roomId) {
+            const password = prompt("Enter the room password:");
+            if (password) {
+                fetch(`/join_room`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ room_id: roomId, pin: password })
+                })
+                .then(response => {
+                    if (response.ok) {
+                        return response.json(); // Return the JSON response
+                    } else {
+                        return response.text().then(text => {
+                            throw new Error(text); // Handle non-200 responses
+                        });
+                    }
+                })
+                .then(data => {
+                    alert(data.message); // Show success message
+                    window.location.href = `/room/${roomId}`; // Redirect to the room
+                })
+                .catch(error => {
+                    alert('Error joining room: ' + error.message); // Show error message
+                    console.error('Error joining room:', error);
+                });
+            }
+        }
+
+
+
+        socket.on('disconnect_user', function() {
+            alert('You have been disconnected from the room.');
+            window.location.href = 'main.html'; // Redirect to the main page or another suitable page
+        });
+
+        function closeRoom() {
+            if (confirm('Are you sure you want to close the room? This action cannot be undone.')) {
+                socket.emit('close_room', { room_id: room }); // Emit event to close room
+            }
+        }
+
+        function createRoom() {
+        const roomId = document.getElementById('room_id').value;
+        const pin = document.getElementById('pin').value;
+            fetch('/create_room', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ room_id: roomId, pin: pin }),
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(errorData => {
+                        alert(errorData.error); // Display error message
+                    });
+                }
+                return response.redirected ? window.location.href = response.url : null; // Redirect to room
+            })
+            .catch(error => console.error('Error creating room:', error));
+        }
+        document.getElementById('joinRoomForm').addEventListener('submit', function(event) {
+    event.preventDefault(); // Prevent default form submission
+
+    const roomId = document.getElementById('room_id').value;
+    const pin = document.getElementById('pin').value;
+
+    fetch('/join_room', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ room_id: roomId, pin: pin }),
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(errorData => {
+                alert(errorData.error); // Handle the error appropriately
+            });
+        }
+        // Handle successful response, redirect to room, etc.
+    })
+    .catch(error => console.error('Error joining room:', error));
+});
+
+    </script>
+</body>
+</html>

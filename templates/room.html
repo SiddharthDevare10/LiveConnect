@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Room {{ room_id }}</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="../static/css/style.css" />
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script>
+        const room = "{{ room_id }}"; // Declare room as a constant
+        const socket = io();
+    
+        // Join the room when the socket connects
+        socket.emit('join', { room: room });
+    
+        // Receive and display messages
+        socket.on('message', function(msg) {
+            const chatBox = document.getElementById('chat-box');
+            const newMessage = document.createElement('div');
+            newMessage.textContent = msg;
+            chatBox.appendChild(newMessage);
+        });
+    
+        function sendMessage() {
+            const messageInput = document.getElementById('message-input');
+            socket.emit('message', messageInput.value);
+            messageInput.value = '';
+        }
+    
+        function closeRoom() {
+            if (confirm('Are you sure you want to close the room? This action cannot be undone.')) {
+                fetch(`/close_room/${room}`, {
+                    method: 'DELETE'
+                })
+                .then(response => {
+                    if (response.ok) {
+                        alert('Room closed successfully!');
+                        window.location.href = 'main.html'; // Redirect to main.html
+                    } else {
+                        alert('Error closing the room.');
+                        window.location.href = 'main.html';
+                    }
+                });
+            }
+        }
+    
+        function uploadFile() {
+            const fileInput = document.getElementById('file-input');
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+    
+            fetch(`/upload/${room}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Set the video source
+                document.getElementById('videoSource').src = data.video_url;
+                document.getElementById('videoPlayer').load();
+                // Inform other users about the new video
+                socket.emit('video_uploaded', data.video_url);
+            })
+            .catch(error => console.error('Error uploading file:', error));
+        }
+    
+        // Update video source when a new video is uploaded
+        socket.on('new_video', function(videoUrl) {
+            const videoElement = document.getElementById('videoPlayer');
+            if (videoElement) {
+                videoElement.src = videoUrl; // Set the source only if the element exists
+                videoElement.load(); // Load the new video
+            } else {
+                console.error('Video element not found!');
+            }
+        });
+
+        const videoElement = document.getElementById('videoPlayer');
+            videoElement.addEventListener('play', function() {
+                socket.emit('video_played', { room: room });
+        });
+
+    
+        function createRoom() {
+            const roomId = document.getElementById('room_id').value;
+            const pin = document.getElementById('pin').value;
+    
+            fetch('/create_room', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ room_id: roomId, pin: pin }),
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(errorData => {
+                        alert(errorData.error); // Display error message
+                    });
+                }
+                window.location.href = '/room/' + roomId; // Adjusted redirect
+            })
+            .catch(error => console.error('Error creating room:', error));
+        }
+
+        socket.on('video_played', function() {
+            const videoElement = document.getElementById('videoPlayer');
+            videoElement.play();
+        });
+    </script>
+    
+</head>
+<body>
+    
+ <!-- Close Room Button -->
+
+    
+            <div class="flex items-center justify-center p-6 sm:p-12 md:w-1/2">              
+                <div class="w-full">
+                    <h1 class="mb-4 text-xl font-semibold text-gray-700 dark:text-gray-200">
+                        Room {{ room_id }}
+                    </h1>
+                    <video id="videoPlayer" width="600" controls>
+                        <source src="{{ current_video_url }}" type="video/mp4">
+                        Your browser does not support the video tag.
+                    </video>
+                    <input class="block w-full px-4 py-2 mt-4 text-sm font-medium leading-5 text-center text-white transition-colors duration-150 bg-purple-600 border border-transparent rounded-lg active:bg-purple-600 hover:bg-purple-700 focus:outline-none focus:shadow-outline-purple" type="file" id="file-input" accept="video/*" onchange="uploadFile()">
+
+                    <br/>
+
+                    <div class="rounded-lg" id="chat-box" style="border: 1px solid #000; height: 200px;  overflow-y: scroll;"></div>
+
+                    <input class="block w-full mt-1 text-sm dark:border-gray-900 dark:bg-gray-900 focus:border-purple-400 focus:shadow-outline-purple focus:shadow-outline-purple dark:text-gray-300 dark:focus:shadow-outline-gray form-input" type="text" id="message-input" placeholder="Type a message...">
+
+                    <button class="block w-full px-4 py-2 mt-4 text-sm font-medium leading-5 text-center text-white transition-colors duration-150 bg-purple-600 border border-transparent rounded-lg active:bg-purple-600 hover:bg-purple-700 focus:outline-none focus:shadow-outline-purple" onclick="sendMessage()">Send</button>
+                    <button class="block w-full px-4 py-2 mt-4 text-sm font-medium leading-5 text-center text-white transition-colors duration-150 bg-purple-600 border border-transparent rounded-lg active:bg-purple-600 hover:bg-purple-700 focus:outline-none focus:shadow-outline-purple"onclick="closeRoom()">Close Room</button>
+                </div>        
+            </div>
+
+
+</body>
+</html>
