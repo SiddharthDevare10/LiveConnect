@@ -32,17 +32,10 @@
    git clone https://github.com/YOUR_USERNAME/LiveConnect.git
    cd LiveConnect
 
-2. **Create and activate a virtual environment (recommended)**
+2. **Install dependencies**
 
-    python -m venv venv
-    # Windows
-    venv\Scripts\activate
-    # macOS/Linux
-    source venv/bin/activate
-
-3. **Install dependencies**
-
-    Run requirements.bat ( For Windows )
+    ```bash
+    pip install -r requirements.txt
 
 4. **Run the application**
 
