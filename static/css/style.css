@@ -50,6 +50,7 @@ main {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    box-sizing: border-box;
 }
 
 .create-account-container {
@@ -60,6 +61,11 @@ main {
 .create-account-container .link-text {
     font-weight: bold;
     text-decoration: none;
+}
+
+.create-account-container .link-text:hover {
+    text-decoration: underline;
+    color: #406F2C;
 }
 
 .center-text {
@@ -94,9 +100,10 @@ main {
     transition: border-color 0.2s, box-shadow 0.2s;
     outline: none;
     width: 100%;
-    min-width: 300px;
-    max-width: 400px;
-    align-self: center;
+    min-width: 0;         /* Allow shrinking on small screens */
+    max-width: 100%;      /* Prevent overflow */
+    align-self: stretch;  /* Fill the container */
+    box-sizing: border-box;
 }
 
 .input-bar input[type="text"]:focus,
@@ -104,6 +111,14 @@ main {
     border-color: #7c3aed;
     box-shadow: 0 0 0 2px #c4b5fd33;
     background-color: #fff;
+
+}
+
+.input-bar input[type="text"]::placeholder,
+.input-bar input[type="password"]::placeholder {
+    font-size: 0.9rem;   /* Reduce as needed, e.g., 0.8rem for even smaller */
+    color: #b39ddb;      /* Optional: lighter color for placeholder */
+    opacity: 1;          /* Ensure visibility */
 }
 
 .input-icon-wrapper {
@@ -164,4 +179,18 @@ main {
 .extra-links .link-text {
     font-weight: bold;
     text-decoration: none;
+}
+
+.extra-links .link-text:hover {
+    text-decoration: underline;
+    color: #406F2C;
+}
+
+@media (max-width: 600px) {
+    .login-container {
+        padding: 1rem;
+    }
+    main {
+        padding: 2rem 0.5rem;
+    }
 }
