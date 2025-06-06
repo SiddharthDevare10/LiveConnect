@@ -2,31 +2,428 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Room {{ room_id }}</title>
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
-    <link rel="stylesheet" href="../static/css/style.css" />
-    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiveConnect Room</title>
+    <link rel="stylesheet" href="/static/css/style.css"/>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    
+    <style>
+        .audio-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            justify-content: center;
+            margin: 1rem 0;
+            padding: 1rem;
+            background: #f8f6fc;
+            border-radius: 0.5rem;
+            border: 1px solid #c4b5fd;
+        }
+        
+        .audio-btn {
+            padding: 0.75rem;
+            border: none;
+            border-radius: 50%;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .audio-btn.mute {
+            background-color: #dc3545;
+            color: white;
+        }
+        
+        .audio-btn.unmute {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .audio-btn:hover {
+            transform: scale(1.1);
+        }
+        
+        .participants-list {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f8f6fc;
+            border-radius: 0.5rem;
+            border: 1px solid #c4b5fd;
+        }
+        
+        .participant {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            padding: 0.5rem;
+            background: white;
+            border-radius: 0.25rem;
+        }
+        
+        .participant-name {
+            font-weight: bold;
+            color: #5b2c6f;
+        }
+        
+        .audio-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #dc3545;
+        }
+        
+        .audio-indicator.speaking {
+            background-color: #28a745;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        
+        .status-text {
+            font-size: 0.9rem;
+            color: #666;
+            text-align: center;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="room-main-wrapper">
+        <div class="room-content">
+            <div class="video-section">
+                <h1 class="section-title">Room {{ room_id }}</h1>
+                
+                <!-- Audio Controls -->
+                <div class="audio-controls">
+                    <button id="toggleMicBtn" class="audio-btn unmute" title="Toggle Microphone">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                    <button id="toggleAudioBtn" class="audio-btn unmute" title="Toggle Audio Output">
+                        <i class="fas fa-volume-up"></i>
+                    </button>
+                    <div class="status-text" id="audioStatus">Audio: Disconnected</div>
+                </div>
+                
+                <!-- Participants List -->
+                <div class="participants-list">
+                    <h3>Participants</h3>
+                    <div id="participantsList"></div>
+                </div>
+                
+                <!-- Video Player -->
+                <video id="videoPlayer" width="400" controls>
+                    {% if current_video_url %}
+                        <source id="videoSource" src="{{ current_video_url }}" type="video/mp4">
+                    {% else %}
+                        <source id="videoSource" src="" type="video/mp4">
+                    {% endif %}
+                    Your browser does not support the video tag.
+                </video>
+                <input class="file-input" type="file" id="file-input" accept="video/*" onchange="uploadFile()">
+            </div>
+            
+            <div class="chat-section">
+                <div class="chat-box" id="chat-box"></div>
+            </div>
+        </div>
+        
+        <div class="chat-input-bar">
+            <input class="chat-input" type="text" id="message-input" placeholder="Type a message...">
+            <button class="action-btn" onclick="sendMessage()">Send</button>
+            <button class="action-btn" onclick="closeRoom()">Close Room</button>
+        </div>
+    </div>
+
     <script>
-        const room = "{{ room_id }}"; // Declare room as a constant
+        const room = "{{ room_id }}";
         const socket = io();
-    
-        // Join the room when the socket connects
+        
+        // Audio chat variables
+        let localStream = null;
+        let peerConnections = {};
+        let isAudioEnabled = true;
+        let isMicEnabled = true;
+        let participants = {};
+        
+        // WebRTC configuration
+        const iceServers = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
+        // Initialize audio chat
+        async function initializeAudioChat() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                document.getElementById('audioStatus').textContent = 'Audio: Connected';
+                
+                // Add local participant
+                addParticipant(getCurrentUsername(), true);
+                
+                // Emit join audio event
+                socket.emit('join_audio', { room: room, username: getCurrentUsername() });
+                
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                document.getElementById('audioStatus').textContent = 'Audio: Microphone access denied';
+            }
+        }
+
+        // Get current username (you'll need to pass this from your backend)
+        function getCurrentUsername() {
+            // This should be passed from your Flask session
+            return "{{ session.get('username', 'Unknown') }}";
+        }
+
+        // Create peer connection
+        function createPeerConnection(peerId) {
+            const pc = new RTCPeerConnection(iceServers);
+            
+            // Add local stream
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    pc.addTrack(track, localStream);
+                });
+            }
+            
+            // Handle incoming stream
+            pc.ontrack = (event) => {
+                const remoteAudio = document.createElement('audio');
+                remoteAudio.srcObject = event.streams[0];
+                remoteAudio.autoplay = true;
+                remoteAudio.id = `audio-${peerId}`;
+                document.body.appendChild(remoteAudio);
+                
+                // Add voice activity detection
+                detectVoiceActivity(event.streams[0], peerId);
+            };
+            
+            // Handle ICE candidates
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice_candidate', {
+                        candidate: event.candidate,
+                        to: peerId,
+                        room: room
+                    });
+                }
+            };
+            
+            return pc;
+        }
+
+        // Voice activity detection
+        function detectVoiceActivity(stream, peerId) {
+            const audioContext = new AudioContext();
+            const analyser = audioContext.createAnalyser();
+            const microphone = audioContext.createMediaStreamSource(stream);
+            
+            analyser.smoothingTimeConstant = 0.8;
+            analyser.fftSize = 1024;
+            microphone.connect(analyser);
+            
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            
+            function checkAudioLevel() {
+                analyser.getByteFrequencyData(dataArray);
+                const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                
+                const indicator = document.querySelector(`[data-participant="${peerId}"] .audio-indicator`);
+                if (indicator) {
+                    if (average > 20) {
+                        indicator.classList.add('speaking');
+                    } else {
+                        indicator.classList.remove('speaking');
+                    }
+                }
+                
+                requestAnimationFrame(checkAudioLevel);
+            }
+            
+            checkAudioLevel();
+        }
+
+        // Socket events for audio chat
+        socket.on('user_joined_audio', async (data) => {
+            const { userId, username } = data;
+            addParticipant(username, false);
+            
+            // Create peer connection for new user
+            const pc = createPeerConnection(userId);
+            peerConnections[userId] = pc;
+            
+            // Create and send offer
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            
+            socket.emit('webrtc_offer', {
+                offer: offer,
+                to: userId,
+                room: room
+            });
+        });
+
+        socket.on('webrtc_offer', async (data) => {
+            const { offer, from } = data;
+            
+            const pc = createPeerConnection(from);
+            peerConnections[from] = pc;
+            
+            await pc.setRemoteDescription(offer);
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            
+            socket.emit('webrtc_answer', {
+                answer: answer,
+                to: from,
+                room: room
+            });
+        });
+
+        socket.on('webrtc_answer', async (data) => {
+            const { answer, from } = data;
+            
+            if (peerConnections[from]) {
+                await peerConnections[from].setRemoteDescription(answer);
+            }
+        });
+
+        socket.on('ice_candidate', async (data) => {
+            const { candidate, from } = data;
+            
+            if (peerConnections[from]) {
+                await peerConnections[from].addIceCandidate(candidate);
+            }
+        });
+
+        socket.on('user_left_audio', (data) => {
+            const { userId, username } = data;
+            removeParticipant(username);
+            
+            // Clean up peer connection
+            if (peerConnections[userId]) {
+                peerConnections[userId].close();
+                delete peerConnections[userId];
+            }
+            
+            // Remove audio element
+            const audioElement = document.getElementById(`audio-${userId}`);
+            if (audioElement) {
+                audioElement.remove();
+            }
+        });
+
+        // UI Functions
+        function addParticipant(username, isLocal = false) {
+            const participantsList = document.getElementById('participantsList');
+            const participantDiv = document.createElement('div');
+            participantDiv.className = 'participant';
+            participantDiv.setAttribute('data-participant', username);
+            
+            participantDiv.innerHTML = `
+                <div class="audio-indicator"></div>
+                <span class="participant-name">${username} ${isLocal ? '(You)' : ''}</span>
+            `;
+            
+            participantsList.appendChild(participantDiv);
+            participants[username] = participantDiv;
+        }
+
+        function removeParticipant(username) {
+            if (participants[username]) {
+                participants[username].remove();
+                delete participants[username];
+            }
+        }
+
+        // Audio control functions
+        function toggleMicrophone() {
+            const micBtn = document.getElementById('toggleMicBtn');
+            const micIcon = micBtn.querySelector('i');
+            
+            if (localStream) {
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    audioTrack.enabled = !audioTrack.enabled;
+                    isMicEnabled = audioTrack.enabled;
+                    
+                    if (isMicEnabled) {
+                        micBtn.className = 'audio-btn unmute';
+                        micIcon.className = 'fas fa-microphone';
+                    } else {
+                        micBtn.className = 'audio-btn mute';
+                        micIcon.className = 'fas fa-microphone-slash';
+                    }
+                }
+            }
+        }
+
+        function toggleAudioOutput() {
+            const audioBtn = document.getElementById('toggleAudioBtn');
+            const audioIcon = audioBtn.querySelector('i');
+            
+            const audioElements = document.querySelectorAll('audio');
+            audioElements.forEach(audio => {
+                audio.muted = !audio.muted;
+            });
+            
+            isAudioEnabled = !isAudioEnabled;
+            
+            if (isAudioEnabled) {
+                audioBtn.className = 'audio-btn unmute';
+                audioIcon.className = 'fas fa-volume-up';
+            } else {
+                audioBtn.className = 'audio-btn mute';
+                audioIcon.className = 'fas fa-volume-mute';
+            }
+        }
+
+        // Event listeners
+        document.getElementById('toggleMicBtn').addEventListener('click', toggleMicrophone);
+        document.getElementById('toggleAudioBtn').addEventListener('click', toggleAudioOutput);
+
+        // Original video and chat functionality
         socket.emit('join', { room: room });
-    
-        // Receive and display messages
+
         socket.on('message', function(msg) {
             const chatBox = document.getElementById('chat-box');
             const newMessage = document.createElement('div');
             newMessage.textContent = msg;
             chatBox.appendChild(newMessage);
+            chatBox.scrollTop = chatBox.scrollHeight;
         });
-    
+
         function sendMessage() {
             const messageInput = document.getElementById('message-input');
-            socket.emit('message', messageInput.value);
-            messageInput.value = '';
+            if (messageInput.value.trim()) {
+                socket.emit('message', messageInput.value);
+                messageInput.value = '';
+            }
         }
-    
+
+        // Enter key for chat
+        document.getElementById('message-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
         function closeRoom() {
             if (confirm('Are you sure you want to close the room? This action cannot be undone.')) {
                 fetch(`/close_room/${room}`, {
@@ -35,109 +432,67 @@
                 .then(response => {
                     if (response.ok) {
                         alert('Room closed successfully!');
-                        window.location.href = 'main.html'; // Redirect to main.html
+                        window.location.href = '/';
                     } else {
                         alert('Error closing the room.');
-                        window.location.href = 'main.html';
+                        window.location.href = '/';
                     }
                 });
             }
         }
-    
+
         function uploadFile() {
             const fileInput = document.getElementById('file-input');
             const file = fileInput.files[0];
+            if (!file) return;
+            
             const formData = new FormData();
             formData.append('file', file);
-    
+
             fetch(`/upload/${room}`, {
                 method: 'POST',
                 body: formData
             })
             .then(response => response.json())
             .then(data => {
-                // Set the video source
                 document.getElementById('videoSource').src = data.video_url;
                 document.getElementById('videoPlayer').load();
-                // Inform other users about the new video
                 socket.emit('video_uploaded', data.video_url);
             })
             .catch(error => console.error('Error uploading file:', error));
         }
-    
-        // Update video source when a new video is uploaded
+
         socket.on('new_video', function(videoUrl) {
             const videoElement = document.getElementById('videoPlayer');
-            if (videoElement) {
-                videoElement.src = videoUrl; // Set the source only if the element exists
-                videoElement.load(); // Load the new video
-            } else {
-                console.error('Video element not found!');
+            const videoSource = document.getElementById('videoSource');
+            if (videoElement && videoSource) {
+                videoSource.src = videoUrl;
+                videoElement.load();
             }
         });
 
         const videoElement = document.getElementById('videoPlayer');
             videoElement.addEventListener('play', function() {
                 socket.emit('video_played', { room: room });
-        });
-
-    
-        function createRoom() {
-            const roomId = document.getElementById('room_id').value;
-            const pin = document.getElementById('pin').value;
-    
-            fetch('/create_room', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ room_id: roomId, pin: pin }),
-            })
-            .then(response => {
-                if (!response.ok) {
-                    return response.json().then(errorData => {
-                        alert(errorData.error); // Display error message
-                    });
-                }
-                window.location.href = '/room/' + roomId; // Adjusted redirect
-            })
-            .catch(error => console.error('Error creating room:', error));
-        }
+            });
 
         socket.on('video_played', function() {
             const videoElement = document.getElementById('videoPlayer');
             videoElement.play();
         });
+
+        // Initialize audio chat when page loads
+        window.addEventListener('load', () => {
+            initializeAudioChat();
+        });
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            Object.values(peerConnections).forEach(pc => pc.close());
+        });
     </script>
-    
-</head>
-<body>
-    
- <!-- Close Room Button -->
-
-    
-            <div class="flex items-center justify-center p-6 sm:p-12 md:w-1/2">              
-                <div class="w-full">
-                    <h1 class="mb-4 text-xl font-semibold text-gray-700 dark:text-gray-200">
-                        Room {{ room_id }}
-                    </h1>
-                    <video id="videoPlayer" width="600" controls>
-                        <source src="{{ current_video_url }}" type="video/mp4">
-                        Your browser does not support the video tag.
-                    </video>
-                    <input class="block w-full px-4 py-2 mt-4 text-sm font-medium leading-5 text-center text-white transition-colors duration-150 bg-purple-600 border border-transparent rounded-lg active:bg-purple-600 hover:bg-purple-700 focus:outline-none focus:shadow-outline-purple" type="file" id="file-input" accept="video/*" onchange="uploadFile()">
-
-                    <br/>
-
-                    <div class="rounded-lg" id="chat-box" style="border: 1px solid #000; height: 200px;  overflow-y: scroll;"></div>
-
-                    <input class="block w-full mt-1 text-sm dark:border-gray-900 dark:bg-gray-900 focus:border-purple-400 focus:shadow-outline-purple focus:shadow-outline-purple dark:text-gray-300 dark:focus:shadow-outline-gray form-input" type="text" id="message-input" placeholder="Type a message...">
-
-                    <button class="block w-full px-4 py-2 mt-4 text-sm font-medium leading-5 text-center text-white transition-colors duration-150 bg-purple-600 border border-transparent rounded-lg active:bg-purple-600 hover:bg-purple-700 focus:outline-none focus:shadow-outline-purple" onclick="sendMessage()">Send</button>
-                    <button class="block w-full px-4 py-2 mt-4 text-sm font-medium leading-5 text-center text-white transition-colors duration-150 bg-purple-600 border border-transparent rounded-lg active:bg-purple-600 hover:bg-purple-700 focus:outline-none focus:shadow-outline-purple"onclick="closeRoom()">Close Room</button>
-                </div>        
-            </div>
-
-
 </body>
 </html>

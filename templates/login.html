@@ -21,19 +21,18 @@
     <main>
         <div class="login-container">
             <h2 class="h2-text">Login</h2>
-            <form action="/main" method="post">           
+            <form action="/main" method="post" onsubmit="return validateLoginForm();">
                 <div class="input-bar">
                     <span>Username</span>
                     <div class="input-icon-wrapper">
-                        <input type="text" name="username" placeholder="Username" required/>
+                        <input type="text" name="username" id="username" placeholder="Username" required minlength="3" maxlength="50" pattern="^[a-zA-Z0-9_]+$" title="Only letters, numbers, and underscores allowed"/>
                         <i class="fa fa-user input-icon"></i>
                     </div>
                 </div>
-                <!-- Example for Password -->
                 <div class="input-bar">
                     <span>Password</span>
                     <div class="input-icon-wrapper">
-                        <input type="password" name="password" placeholder="Password" required/>
+                        <input type="password" name="password" id="password" placeholder="Password" required minlength="6"/>
                         <i class="fa fa-lock input-icon"></i>
                     </div>
                 </div>
@@ -41,7 +40,13 @@
                 <button type="submit" class="login-btn">
                     Sign In
                 </button>
+
             </form>
+
+            {% if error %}
+                <script>alert("{{ error }}");</script>
+            {% endif %}
+
             <p class="extra-links">
                 <a class="link-text" href="/register">
                     Forgot Password?
@@ -54,6 +59,27 @@
                 Don't have an account? <a class="link-text" href="/register">Sign Up</a>
             </p>
         </div>
+
+        <script>
+            function validateLoginForm() {
+                const username = document.getElementById('username').value.trim();
+                const pw = document.getElementById('password').value;
+
+                // Username: 3-50 chars, only letters, numbers, underscores
+                if (!/^[a-zA-Z0-9_]{3,50}$/.test(username)) {
+                    alert("Username must be 3-50 characters and contain only letters, numbers, and underscores.");
+                    return false;
+                }
+
+                // Password: at least 6 chars
+                if (pw.length < 6) {
+                    alert("Password must be at least 6 characters.");
+                    return false;
+                }
+
+                return true;
+            }
+        </script>
     </main>
 </body>
 </html>

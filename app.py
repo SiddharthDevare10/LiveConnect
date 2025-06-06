@@ -3,7 +3,8 @@ from flask import Flask, render_template, request, redirect, url_for, session, s
 from werkzeug.utils import secure_filename
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from flask_socketio import SocketIO, send, emit, join_room
+from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask import jsonify, request, render_template, session, url_for
 
 UPLOAD_FOLDER = 'uploads/'
 ALLOWED_EXTENSIONS = {'mp4', 'webm', 'ogg'}
@@ -25,6 +26,7 @@ if not os.path.exists(UPLOAD_FOLDER):
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)  # Added email field
     password = db.Column(db.String(50), nullable=False)
 
 class Room(db.Model):
@@ -44,20 +46,29 @@ def login():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    error = None
     if request.method == 'POST':
         username = request.form['username']
+        email = request.form['email']
         password = request.form['password']
-        
-        # Check if username already exists
-        existing_user = User.query.filter_by(username=username).first()
-        if existing_user:
-            return {'error': 'Username already exists'}, 400
-        
-        user = User(username=username, password=password)
-        db.session.add(user)
-        db.session.commit()
-        return redirect(url_for('login'))
-    return render_template('register.html')
+        confirm_password = request.form['confirm_password']
+
+        # Check if passwords match
+        if password != confirm_password:
+            error = 'Passwords do not match'
+        else:
+            # Check if username or email already exists
+            existing_user = User.query.filter(
+                (User.username == username) | (User.email == email)
+            ).first()
+            if existing_user:
+                error = 'Username or email already exists'
+            else:
+                user = User(username=username, email=email, password=password)
+                db.session.add(user)
+                db.session.commit()
+                return redirect(url_for('login'))
+    return render_template('register.html', error=error)
 
 @app.route('/main', methods=['POST'])
 def main():
@@ -69,7 +80,7 @@ def main():
         rooms = Room.query.all()
         return render_template('main.html', rooms=rooms)
     else:
-        return redirect(url_for('login'))
+        return render_template('login.html', error="Invalid username or password")
 
 @app.route('/create_room', methods=['POST'])
 def create_room():
@@ -102,7 +113,8 @@ def join_room_route():
 def room(room_id):
     room_data = Room.query.filter_by(room_id=room_id).first()
     if room_data:
-        return render_template('room.html', room_id=room_id, current_video_url=room_data.current_video_url)
+        video_url = room_data.current_video_url or ""
+        return render_template('room.html', room_id=room_id, current_video_url=video_url)
     return "Room not found", 404
 
 @app.route('/upload/<room_id>', methods=['POST'])
@@ -159,6 +171,74 @@ def on_join(data):
     room = data['room']
     join_room(room)
     emit('message', f"{session['username']} has entered the room.", room=room)
+
+socketio.on('join')
+def handle_join(data):
+    room = data['room']
+    username = session.get('username', 'Unknown')
+    join_room(room)
+    emit('message', f"{username} has entered the room.", room=room)
+
+@socketio.on('message')
+def handle_message(msg):
+    username = session.get('username', 'Unknown')
+    room = None
+    # If you send room info with the message, use it here
+    # room = msg.get('room')
+    # emit('message', f"{username}: {msg['text']}", room=room)
+    # For now, broadcast to all
+    send(f"{username}: {msg}", broadcast=True)
+
+@socketio.on('video_played')
+def handle_video_played(data):
+    room = data['room']
+    emit('video_played', room=room)
+
+@socketio.on('video_uploaded')
+def handle_video_uploaded(video_url):
+    # You may want to send this to a specific room
+    emit('new_video', video_url, broadcast=True)
+
+# --- AUDIO CHAT SIGNALING EVENTS ---
+
+@socketio.on('join_audio')
+def handle_join_audio(data):
+    room = data['room']
+    username = data['username']
+    user_id = request.sid
+    join_room(room)
+    emit('user_joined_audio', {'userId': user_id, 'username': username}, room=room, include_self=False)
+
+@socketio.on('webrtc_offer')
+def handle_webrtc_offer(data):
+    offer = data['offer']
+    to = data['to']
+    emit('webrtc_offer', {'offer': offer, 'from': request.sid}, room=to)
+
+@socketio.on('webrtc_answer')
+def handle_webrtc_answer(data):
+    answer = data['answer']
+    to = data['to']
+    emit('webrtc_answer', {'answer': answer, 'from': request.sid}, room=to)
+
+@socketio.on('ice_candidate')
+def handle_ice_candidate(data):
+    candidate = data['candidate']
+    to = data['to']
+    emit('ice_candidate', {'candidate': candidate, 'from': request.sid}, room=to)
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    # Optionally, notify others in the room
+    pass
+
+@socketio.on('leave_audio')
+def handle_leave_audio(data):
+    room = data['room']
+    username = data['username']
+    user_id = request.sid
+    leave_room(room)
+    emit('user_left_audio', {'userId': user_id, 'username': username}, room=room)
 
 if __name__ == '__main__':
     with app.app_context():

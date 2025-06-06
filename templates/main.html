@@ -40,16 +40,16 @@
                 <!-- Join Room Container -->
                 <div class="room-container join-room-container">
                     <h1 class="section-title">Join a Room</h1>
-                    <ul class="room-list">
-                        {% for room in rooms %}
-                        <li class="room-list-item">
-                            <span>Room ID: {{ room.room_id }}</span>
-                            <button class="action-btn" onclick="joinRoom('{{ room.room_id }}')">Join</button>
-                        </li>
-                        {% else %}
-                        <li>No rooms available.</li>
-                        {% endfor %}
-                    </ul>
+                        <ul class="room-list">
+                            {% for room in rooms %}
+                            <li class="room-list-item">
+                                <span>Room ID: {{ room['room_id'] }}</span>
+                                <button class="action-btn" onclick="joinRoom('{{ room['room_id'] }}')">Join</button>
+                            </li>
+                            {% else %}
+                            <li>No rooms available.</li>
+                            {% endfor %}
+                        </ul>
                 </div>
             </div>
         </div>

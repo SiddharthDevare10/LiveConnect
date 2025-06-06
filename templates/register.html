@@ -21,27 +21,90 @@
     <main>
         <div class="login-container">
             <h2 class="h2-text">Register</h2>
-            <form action="/register" method="post">           
+
+            <form action="/register" method="post" onsubmit="return validateForm()">  
+                <!-- Username -->         
                 <div class="input-bar">
                     <span>Username</span>
                     <div class="input-icon-wrapper">
-                        <input type="text" name="username" placeholder="Username" required/>
+                        <input type="text" name="username" id="username" placeholder="Username" required minlength="3" maxlength="50" pattern="^[a-zA-Z0-9_]+$" title="Only letters, numbers, and underscores allowed"/>
                         <i class="fa fa-user input-icon"></i>
                     </div>
                 </div>
-                <!-- Example for Password -->
+
+                <!-- Email -->
+                <div class="input-bar">
+                    <span>Email</span>
+                    <div class="input-icon-wrapper">
+                        <input type="email" name="email" id="email" placeholder="Email" required/>
+                        <i class="fa fa-envelope input-icon"></i>
+                    </div>
+                </div>
+
+                <!-- Password -->
                 <div class="input-bar">
                     <span>Password</span>
                     <div class="input-icon-wrapper">
-                        <input type="password" name="password" placeholder="Password" required/>
+                        <input type="password" name="password" id="password" placeholder="Password" required minlength="6"/>
                         <i class="fa fa-lock input-icon"></i>
                     </div>
                 </div>
 
+                <!-- Confirm Password -->
+                <div class="input-bar">
+                    <span>Confirm Password</span>
+                    <div class="input-icon-wrapper">
+                        <input type="password" name="confirm_password" id="confirm_password" placeholder="Confirm Password" required minlength="6"/>
+                        <i class="fa fa-lock input-icon"></i>
+                    </div>
+                </div>
+
+                <div id="error-message" style="color:red; margin-bottom:10px;"></div>
+
                 <button type="submit" class="login-btn">
                     Sign Up
                 </button>
+
+                {% if error %}
+                    <script>alert("{{ error }}");</script>
+                {% endif %}
             </form>
+
+            <script>
+                function validateForm() {
+                    const username = document.getElementById('username').value.trim();
+                    const email = document.getElementById('email').value.trim();
+                    const pw = document.getElementById('password').value;
+                    const cpw = document.getElementById('confirm_password').value;
+
+                    // Username: 3-50 chars, only letters, numbers, underscores
+                    if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+                        alert("Username must be 3-20 characters and contain only letters, numbers, and underscores.");
+                        return false;
+                    }
+
+                    // Email: simple regex
+                    if (!/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
+                        alert("Please enter a valid email address.");
+                        return false;
+                    }
+
+                    // Password: at least 6 chars
+                    if (pw.length < 6) {
+                        alert("Password must be at least 6 characters.");
+                        return false;
+                    }
+
+                    // Confirm password matches
+                    if (pw !== cpw) {
+                        alert("Passwords do not match.");
+                        return false;
+                    }
+
+                    return true;
+                }
+            </script>
+
         </div>
     </main>
     
